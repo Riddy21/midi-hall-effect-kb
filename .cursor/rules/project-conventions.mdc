@@ -1,0 +1,85 @@
+---
+description: midi-hall-effect-kb — architecture, style, and workflow for agents
+alwaysApply: true
+---
+
+# midi-hall-effect-kb — agent guide
+
+## What this project is
+
+Arduino Uno firmware: **hall-effect keys** read through an **analog multiplexer**, per-key ADC calibration **stored in EEPROM**, optional **calibration mode** on a GPIO with LED feedback. **Serial** prints tabular key / percent / ADC at a fixed interval (building block toward MIDI or host tools).
+
+## Build, flash, monitor, test
+
+- **Compile:** `pio run -e uno`
+- **Upload:** `pio run -e uno -t upload` (set port in env or CLI if needed)
+- **Serial monitor:** 115200 8N1 — `pio device monitor -b 115200` (or VS Code PlatformIO)
+- **All tests:** `pio test -e uno`
+- **One suite:** `pio test -e uno -f test_basic` or `-f test_scan_rate` or `-f test_eeprom_calibration`
+
+Hardware tests upload firmware to the board; EEPROM tests back up and restore the calibration slot.
+
+Env name is **`uno`** (`platformio.ini`). Application sources are **allow-listed** via `build_src_filter` (not every `src/*.cpp` is in the firmware image by default).
+
+## Layout and responsibilities
+
+| Area | Role |
+|------|------|
+| `include/config.h` | Pinout, mux counts, calibration/LED/deadzone defines (single place to edit wiring) |
+| `include/mux.h`, `src/mux.cpp` | `Mux` + `MuxConfig`; **no** global mux — owning TU constructs `Mux g_mux(config)` (see `main.cpp`) |
+| `include/button.h`, `src/button.cpp` | Debounced `Button` (cal mode switch uses it inside `key_calibration.cpp`) |
+| `include/eeprom_store.h`, `src/eeprom.cpp` | `EepromStore::instance()`, typed **`EepromSlot<T>`** for EEPROM regions |
+| `include/key_calibration.h`, `src/key_calibration.cpp` | EEPROM cal blob, runtime min/max, cal switch polling, mapping 0–100 |
+| `src/main.cpp` | App `setup`/`loop`, owns **`Mux g_mux(muxDefaultConfig())`**, key scan, Serial table (`PIO_UNIT_TESTING` omits app; tests supply their own `setup`/`loop`) |
+
+Tests live under `test/`; see `test/README` for suite list.
+
+## Naming and style (conventions used here)
+
+- **C++** with Arduino APIs; headers **`#pragma once`**.
+- **Filenames:** lowercase with underscore (`key_calibration.cpp`). EEPROM public header is **`eeprom_store.h`** — do **not** add `include/eeprom.h`: on case-insensitive filesystems it collides with Arduino `<EEPROM.h>`.
+- **Types:** `Mux`, `Button`, `EepromStore`, `EepromSlot<T>` as small focused types; prefer **constructors + instance methods** over hidden singletons except **`EepromStore::instance()`** (single backing store).
+- **Config:** Prefer **`config.h`** macros and **`muxDefaultConfig()`** → `Mux` in main; avoid hardcoding pins in random `.cpp` files.
+- **Scope:** Match existing file style; avoid drive-by refactors or unrelated files in a task diff.
+- **Comments:** Short and purposeful; no essay docstrings on obvious code.
+
+## EEPROM and calibration
+
+- Calibration key count and base address: **`key_calibration.h`** (`EEPROM_CAL_KEY_COUNT`, etc.).
+- **`EepromSlot<CalBlob>`** used internally for the versioned blob; tests use **`EepromStore::instance()`** and **`EepromSlot<T>`** for typed reads/writes.
+
+## When changing behavior
+
+- After edits, run **`pio run -e uno`**. If EEPROM/C/lib code changed, run relevant **`pio test`** suites on hardware when possible.
+- Keep **`platformio.ini`** `build_src_filter` in sync if you add/remove translation units for the main firmware.
+
+## Adding a new module (checklist)
+
+Use this whenever you introduce a new **`.cpp`** / library-style component so the project still links and matches existing patterns.
+
+1. **Register the translation unit**  
+   Add a line to **`[env:uno] build_src_filter`** in **`platformio.ini`**, e.g. `+<my_module.cpp>`.  
+   This project **allow-lists** `src/` files; dropping a new `.cpp` in `src/` without this line will usually cause **undefined reference** link errors for firmware and test builds.
+
+2. **Header + source layout**  
+   - Public API in **`include/<name>.h`** (`#pragma once`).  
+   - Implementation in **`src/<name>.cpp`**.  
+   - Match existing naming: **lowercase with underscores** for files (`key_calibration.cpp`, not `KeyCalibration.cpp`).
+
+3. **Dependencies**  
+   - Board/pin **defaults** belong in **`config.h`** (or a constructor argument), not scattered magic numbers.  
+   - **`#include <Arduino.h>`** in `.cpp` when you use `pinMode`, `digitalWrite`, `millis`, etc.  
+   - Never add **`include/eeprom.h`** — use **`eeprom_store.h`** so Arduino’s **`<EEPROM.h>`** is not shadowed on case-insensitive volumes.  
+   - In `.cpp` files that use **both** project headers and **`#include <EEPROM.h>`**, include **`<Arduino.h>`** and **`<EEPROM.h>`** **before** any project header that could be confused with system names (same idea as **`eeprom.cpp`**).
+
+4. **Ownership / globals**  
+   - **Prefer** a **class** with a clear constructor (`Mux`, `Button`) and **one owning site** (e.g. **`static Mux g_mux(...)`** in **`main.cpp`**) instead of hidden file-static singletons, unless the pattern is **`EepromStore::instance()`** for the single NVM backend.  
+   - If the module is only used inside one existing `.cpp`, consider **anonymous-namespace** helpers first before growing new public surface.
+
+5. **Tests and `main`**  
+   - Application code in **`main.cpp`** stays behind **`#if !defined(PIO_UNIT_TESTING)`** when tests supply their own **`setup`/`loop`**.  
+   - New globals in tests: each test firmware is a separate build; follow **`test_basic`** / **`test_scan_rate`** (local **`Mux`**, etc.).
+
+6. **Verify**  
+   Run **`pio run -e uno`**. If the module is on critical paths, run the relevant **`pio test -e uno -f …`** on hardware when possible.
+

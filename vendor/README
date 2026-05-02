@@ -1,0 +1,1 @@
+`UnityVendor/` is Throw The Switch Unity 2.6.1 vendored without `platformio-build.py`, so `unity.c` compiles as C and uses `include/unity_config.h` (via symlink `unity_config.h` here). License: MIT (see upstream).

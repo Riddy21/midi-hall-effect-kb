@@ -1,0 +1,17 @@
+# Tests
+
+| Path | Contents |
+|------|----------|
+| **`test/shared/unity_output.cpp`** | Unity → Serial (compiled only when **`PIO_UNIT_TESTING`** is set) |
+| **`test/test_basic/tests.cpp`** | Mux tests + harness |
+| **`test/test_scan_rate/tests.cpp`** | Scan-rate tests + harness |
+
+Firmware uses **one PlatformIO env: `uno`**. **Upload** builds only **`main.cpp`** + mux (+ empty unity stub). **`pio test`** still produces **one binary per suite** (same env, different test tree).
+
+```bash
+pio test
+pio test -f test_basic
+pio test -f test_scan_rate
+```
+
+**115200 8N1** — `include/serial_baud.h`, **`platformio.ini`**.

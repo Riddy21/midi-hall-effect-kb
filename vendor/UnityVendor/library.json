@@ -1,0 +1,10 @@
+{
+  "name": "UnityVendor",
+  "version": "2.6.1",
+  "description": "Vendored ThrowTheSwitch Unity (no platformio-build.py) so project include/unity_config.h is used.",
+  "license": "MIT",
+  "build": {
+    "srcFilter": "+<unity.c>",
+    "includeDir": "."
+  }
+}
