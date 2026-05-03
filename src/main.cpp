@@ -2,13 +2,11 @@
 
 #include "config.h"
 #include "key_calibration.h"
-#include "midi_config.h"
 #include "mux.h"
 #include "serial_baud.h"
 
 #if MIDIOUT_ENABLED
-#include "midi_api.h"
-#include "midi_key_scan.h"
+#include "midi.h"
 #endif
 
 // Omitted in unit-test builds (PIO defines PIO_UNIT_TESTING); test/*/tests.cpp
@@ -23,6 +21,10 @@ static constexpr size_t KEY_COUNT = EEPROM_CAL_KEY_COUNT;
 // Key table print rate (polling stays every loop).
 static constexpr uint32_t SERIAL_REPORT_INTERVAL_MS = 50;
 static uint16_t keyValues[KEY_COUNT];
+#if MIDIOUT_ENABLED
+// Calibrated [0.0, 1.0] strength per key — preserves ADC precision for velocity mapping.
+static float keyStrengths[KEY_COUNT];
+#endif
 
 static void pollAllKeys() {
   for (uint8_t i = 0; i < KEY_COUNT; i++) {
@@ -50,7 +52,8 @@ static void printKeyTableColumns(uint32_t nowMs) {
   Serial.print(F("pct"));
   for (size_t i = 0; i < KEY_COUNT; i++) {
     Serial.print('\t');
-    const uint8_t p = keyCalibrationDisplayPercent(i, keyValues[i]);
+    const float s = keyCalibrationDisplayStrength(i, keyValues[i]);
+    const uint8_t p = static_cast<uint8_t>(s * 100.0f + 0.5f);
     if (p < 100) {
       Serial.print(' ');
     }
@@ -110,7 +113,10 @@ void loop() {
   pollAllKeys();
 
 #if MIDIOUT_ENABLED
-  midiKeyScanPoll(keyValues, KEY_COUNT);
+  for (size_t i = 0; i < KEY_COUNT; i++) {
+    keyStrengths[i] = keyCalibrationMap(i, keyValues[i]);
+  }
+  midiKeyScanPoll(keyStrengths, KEY_COUNT);
 #endif
 
 #if !MIDIOUT_ENABLED || !defined(MIDI_SILENCE_POLL_TABLE)

@@ -30,9 +30,10 @@ void keyCalibrationEndCommit();
 bool keyCalibrationIsActive();
 void keyCalibrationFeed(size_t keyIndex, uint16_t raw);
 
-uint8_t keyCalibrationMap(size_t keyIndex, uint16_t raw);
-// During active calibration, maps using the running session min/max (for display).
-uint8_t keyCalibrationDisplayPercent(size_t keyIndex, uint16_t raw);
+// Calibrated strength in [0.0, 1.0]. Float keeps full ADC-bit precision past the deadzone.
+float keyCalibrationMap(size_t keyIndex, uint16_t raw);
+// During active calibration, maps using the running session min/max (for display). Same [0.0, 1.0] range.
+float keyCalibrationDisplayStrength(size_t keyIndex, uint16_t raw);
 
 // Serial helpers (session/stored ranges are ADC counts 0..1023 on Uno).
 void keyCalibrationPrintSessionAdcRanges(Stream& out);

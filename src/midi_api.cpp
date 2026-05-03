@@ -1,9 +1,15 @@
-#include "midi_api.h"
+#include "midi.h"
 
 #include <Arduino.h>
 
-#include "midi_config.h"
-#include "usb_midi.h"
+// Single TU for outbound MIDI: same `midiApi*(channel, …)` API regardless of transport.
+// `MIDI_TRANSPORT_USB` (Leonardo / Micro / class-compliant USB-MIDI) vs `MIDI_TRANSPORT_SERIAL`
+// (Uno / Pico CDC raw MIDI bytes consumed by `tools/serial_midi_bridge.py`) chosen at compile time
+// in `platformio.ini` (see `include/config.h` "MIDI transport"). MIDIUSB lib is only pulled when needed.
+
+#if MIDIOUT_ENABLED && defined(MIDI_TRANSPORT_USB) && !defined(PIO_UNIT_TESTING)
+#include <MIDIUSB.h>
+#endif
 
 namespace {
 
@@ -24,7 +30,10 @@ uint8_t channelIndex(uint8_t channel1to16) {
 
 void emit3Raw(uint8_t status, uint8_t d1, uint8_t d2) {
 #if defined(MIDI_TRANSPORT_USB)
-  usbMidiSend3(status, d1, d2);
+  // USB-MIDI Cable 0; CIN nibble matches the high nibble of the status byte for channel-voice messages.
+  const uint8_t cin = static_cast<uint8_t>((status >> 4) & 0x0Fu);
+  midiEventPacket_t evt{cin, status, d1, d2};
+  MidiUSB.sendMIDI(evt);
 #elif defined(MIDI_TRANSPORT_SERIAL)
   Serial.write(status);
   Serial.write(d1);
@@ -38,7 +47,9 @@ void emit3Raw(uint8_t status, uint8_t d1, uint8_t d2) {
 
 void emit2Raw(uint8_t status, uint8_t d1) {
 #if defined(MIDI_TRANSPORT_USB)
-  usbMidiSend2(status, d1);
+  const uint8_t cin = static_cast<uint8_t>((status >> 4) & 0x0Fu);
+  midiEventPacket_t evt{cin, status, d1, 0};
+  MidiUSB.sendMIDI(evt);
 #elif defined(MIDI_TRANSPORT_SERIAL)
   Serial.write(status);
   Serial.write(d1);
@@ -48,26 +59,21 @@ void emit2Raw(uint8_t status, uint8_t d1) {
 #endif
 }
 
-#else
-
-// Empty when MIDI output omitted — keeps TU valid for Uno/tests.
-
 #endif  // MIDIOUT_ENABLED && !PIO_UNIT_TESTING
 
 }  // namespace
 
 void midiApiBegin(void) {
-#if MIDIOUT_ENABLED && !defined(PIO_UNIT_TESTING)
-#if defined(MIDI_TRANSPORT_USB)
-  usbMidiInit();
-#endif
-#endif
+  // USB-MIDI enumerates via Arduino USBCore automatically; Serial.begin lives in main.cpp setup().
 }
 
 void midiApiPoll(void) {
 #if MIDIOUT_ENABLED && !defined(PIO_UNIT_TESTING)
 #if defined(MIDI_TRANSPORT_USB)
-  usbMidiPoll();
+  MidiUSB.flush();
+  while (MidiUSB.available() != 0u) {
+    (void)MidiUSB.read();
+  }
 #elif defined(MIDI_TRANSPORT_SERIAL)
   Serial.flush();
 #endif
@@ -136,6 +142,6 @@ void midiApiPitchBend14(uint8_t channel1to16, uint16_t value14center8192) {
 
 void midiApiAllNotesOff(uint8_t channel1to16) {
 #if MIDIOUT_ENABLED && !defined(PIO_UNIT_TESTING)
-  midiApiControlChange(channel1to16, 123, 0);  // MIDI CC123 All Notes Off
+  midiApiControlChange(channel1to16, 123, 0);  // CC123 All Notes Off
 #endif
 }

@@ -1,21 +1,9 @@
-#include "midi_key_scan.h"
+#include "midi.h"
 
 #include <Arduino.h>
 #include <string.h>
 
-#include "config.h"
-#include "key_calibration.h"
-#include "midi_config.h"
-
 #if MIDIOUT_ENABLED && !defined(PIO_UNIT_TESTING)
-#include "midi_api.h"
-#endif
-
-static_assert(static_cast<unsigned>(MIDI_NOTE_OFF_PERCENT) <
-                  static_cast<unsigned>(MIDI_NOTE_ON_PERCENT),
-              "midi_key_scan hysteresis expects MIDI_NOTE_OFF_PERCENT < MIDI_NOTE_ON_PERCENT");
-
-#if MIDIOUT_ENABLED
 
 namespace {
 
@@ -34,29 +22,27 @@ uint8_t channel1to16Clamped(void) {
   return static_cast<uint8_t>(c);
 }
 
-uint8_t velocityFromStrength(uint8_t strength0to100) {
-  uint16_t v = (static_cast<uint16_t>(strength0to100) * 127u + 50u) / 100u;
-  if (v < 1u) {
+uint8_t velocityFromStrength(float strength0to1) {
+  if (strength0to1 < 0.0f) {
+    strength0to1 = 0.0f;
+  }
+  if (strength0to1 > 1.0f) {
+    strength0to1 = 1.0f;
+  }
+  int v = static_cast<int>(strength0to1 * 127.0f + 0.5f);
+  // Note On with velocity 0 means Note Off — caller already gated strength > 0, so floor at 1.
+  if (v < 1) {
     return 1;
   }
-  if (v > 127u) {
+  if (v > 127) {
     return 127;
   }
   return static_cast<uint8_t>(v);
 }
 
-uint8_t noteForKey(size_t keyIndex) {
-  const unsigned base = static_cast<unsigned>(MIDI_KEY_NOTE_BASE);
-  unsigned n = base + static_cast<unsigned>(keyIndex);
-  if (n > 127u) {
-    n = 127u;
-  }
-  return static_cast<uint8_t>(n);
-}
-
 }  // namespace
 
-#endif  // MIDIOUT_ENABLED
+#endif  // MIDIOUT_ENABLED && !PIO_UNIT_TESTING
 
 void midiKeyScanInit(void) {
 #if MIDIOUT_ENABLED && !defined(PIO_UNIT_TESTING)
@@ -64,9 +50,9 @@ void midiKeyScanInit(void) {
 #endif
 }
 
-void midiKeyScanPoll(uint16_t const* raw_adc_per_key, size_t key_count) {
+void midiKeyScanPoll(float const* strength_per_key_0to1, size_t key_count) {
 #if MIDIOUT_ENABLED && !defined(PIO_UNIT_TESTING)
-  if (!raw_adc_per_key) {
+  if (!strength_per_key_0to1) {
     return;
   }
 
@@ -78,14 +64,16 @@ void midiKeyScanPoll(uint16_t const* raw_adc_per_key, size_t key_count) {
   }
 
   for (size_t i = 0; i < n; i++) {
-    const uint8_t strength = keyCalibrationMap(i, raw_adc_per_key[i]);
-    const uint8_t note = noteForKey(i);
+    const float strength = strength_per_key_0to1[i];
+    const uint8_t note = midiKeyboardPhysicalNote(i);
     const bool held = s_active[i];
 
-    if (!held && strength >= static_cast<uint8_t>(MIDI_NOTE_ON_PERCENT)) {
+    // Calibration already applies KEY_MAP_DEADZONE_PERCENT at both ends of the span,
+    // so mapRange() returns exact 0.0f at rest and >0 once the key leaves the deadzone.
+    if (!held && strength > 0.0f) {
       midiApiNoteOn(ch, note, velocityFromStrength(strength));
       s_active[i] = true;
-    } else if (held && strength <= static_cast<uint8_t>(MIDI_NOTE_OFF_PERCENT)) {
+    } else if (held && strength == 0.0f) {
       midiApiNoteOff(ch, note, 0);
       s_active[i] = false;
     }
@@ -93,7 +81,7 @@ void midiKeyScanPoll(uint16_t const* raw_adc_per_key, size_t key_count) {
 
 #else
 
-  (void)raw_adc_per_key;
+  (void)strength_per_key_0to1;
   (void)key_count;
 
 #endif

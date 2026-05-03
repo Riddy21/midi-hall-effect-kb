@@ -19,7 +19,7 @@ Arduino Uno firmware: **hall-effect keys** read through an **analog multiplexer*
 
 Hardware tests upload firmware to the board; EEPROM tests back up and restore the calibration slot.
 
-Env MIDI / board: **`midi_serial`**, **`midi_usb`**, **`pico`**, **`pico_midi_serial`**, plus legacy **`uno_midi_serial`**, **`leonardo`**, **`micro`**. **`pico`** uses `maxgerhardt/platform-raspberrypi` + **earlephilhower** core (see `platformio.ini`). **`include/midi_config.h`** table lists transports.
+Env MIDI / board: **`midi_serial`**, **`midi_usb`**, **`pico`**, **`pico_midi_serial`**, plus legacy **`uno_midi_serial`**, **`leonardo`**, **`micro`**. **`pico`** uses `maxgerhardt/platform-raspberrypi` + **earlephilhower** core (see `platformio.ini`). **`include/config.h`** holds both transport flags (`MIDIOUT_ENABLED`, `MIDI_TRANSPORT_*`, `MIDI_SERIAL_BAUD`) and the per-key note map (`MIDI_MAP_PHYSICAL_KEY*_NOTE`); **`include/midi.h`** is the MIDI API + `midiKeyboardPhysicalNote()`.
 
 ## Layout and responsibilities
 
@@ -31,7 +31,7 @@ Env MIDI / board: **`midi_serial`**, **`midi_usb`**, **`pico`**, **`pico_midi_se
 | `include/eeprom_store.h`, `src/eeprom.cpp` | `EepromStore::instance()`, typed **`EepromSlot<T>`** for EEPROM regions |
 | `include/key_calibration.h`, `src/key_calibration.cpp` | EEPROM cal blob, runtime min/max, cal switch polling, mapping 0–100 |
 | `src/main.cpp` | App `setup`/`loop`, owns **`Mux g_mux(muxDefaultConfig())`**, key scan, Serial table (`PIO_UNIT_TESTING` omits app; tests supply their own `setup`/`loop`) |
-| `include/midi_config.h`, `include/midi_api.h`, `include/usb_midi.h`, `include/midi_key_scan.h` + `.cpp` | Compile‑time transports: USB MIDI (**32U4**), optional serial MIDI fallback; **`midi_key_scan`** maps hall strength → note on/off |
+| `include/midi.h` + `src/midi_api.cpp` + `src/midi_key_scan.cpp` | **`midi.h`** = outbound MIDI API + per-key note map (`midiKeyboardPhysicalNote`). **`midi_api.cpp`** is the single TU that branches USB-MIDI (MIDIUSB on 32U4) vs serial (raw `Serial.write` for the Uno/Pico host bridge); transport macros come from **`config.h`**. **`midi_key_scan.cpp`** turns calibrated hall strength → Note On/Off. |
 
 Tests live under `test/`; see `test/README` for suite list.
 

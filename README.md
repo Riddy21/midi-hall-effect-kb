@@ -74,17 +74,19 @@ python tools/serial_midi_bridge.py -p /dev/cu.usbmodemXXXX   # explicit device
 python tools/serial_midi_bridge.py                           # omit -p to auto-pick cu.usbmodem*
 ```
 
-Keep **baud `115200`** on both ends (`platformio.ini` **`monitor_speed`**, **`include/serial_baud.h`** / **`MIDI_SERIAL_BAUD`** in **`include/midi_config.h`**).
+Keep **baud `115200`** on both ends (`platformio.ini` **`monitor_speed`**, **`include/serial_baud.h`** / **`MIDI_SERIAL_BAUD`** in **`include/config.h`**).
 
 The bridge opens serial with **DTR/RTS de‑asserted** so macOS is less likely to **reset** the board and churn “serial disconnected” reconnect loops (details in **`tools/serial_midi_bridge.py`**).
 
+**Verbose (`-v`) shows no MIDI when pressing keys:** use firmware **`midi_serial`**; **`PIN_CALIB_MODE` (pin 7)** idle **LOW** (wire ~10k to GND per **`config.h`**) — a floating or HIGH cal pin used to trap the device in calibration at boot (**no MIDI**). If presses never trip Note On, lower **`KEY_MAP_DEADZONE_PERCENT`** (or recalibrate so each key sweeps a wider min..max).
+
 ### Other boards (quick reference)
 
-`platformio.ini` also defines Leonardo/Micro **native USB MIDI** (`midi_usb`, `midi_usb_micro`, **`MIDIUSB`**) and **Raspberry Pi Pico** (`pico`, `pico_midi_serial`). **`include/midi_config.h`** has an environment ↔ transport table.
+`platformio.ini` also defines Leonardo/Micro **native USB MIDI** (`midi_usb`, `midi_usb_micro`, **`MIDIUSB`**) and **Raspberry Pi Pico** (`pico`, `pico_midi_serial`). All compile-time MIDI knobs (transport flags, baud, per-key note map, channel, calibration deadzone) live in **`include/config.h`**; **`include/midi.h`** is the API surface.
 
 ## Configuration
 
-Edit **`include/config.h`**: mux enable and address pins, analog input pin, calibration pin and active level, LED pin, deadzone percent, EEPROM-related tuning, mux channel count / address bit count.  
+Edit **`include/config.h`**: mux enable and address pins, analog input pin, calibration pin and active level, LED pin, deadzone percent, EEPROM-related tuning, mux channel count / address bit count. For MIDI builds (**`midi_serial`** / **`midi_usb`**), **`MIDI_MAP_PHYSICAL_KEY00_NOTE`** … **`MIDI_MAP_PHYSICAL_KEY09_NOTE`** map multiplex columns (**`k0`…`k9`**) to MIDI notes (defaults are ascending piano white keys from C4 — **60,62,64,…,76**) and **`MIDI_VOICE_CHANNEL`** sets the host-visible 1–16 channel. Note On/Off boundaries are driven by the calibration deadzone (**`KEY_MAP_DEADZONE_PERCENT`**): a key fires Note On as soon as the calibrated 0–100 % strength leaves 0, and Note Off when it returns to 0.  
 The application constructs the mux in **`src/main.cpp`**:
 
 ```cpp
@@ -114,7 +116,7 @@ Some suites need the board connected (upload + serial). EEPROM tests temporarily
 | `include/eeprom_store.h`, `src/eeprom.cpp` | EEPROM access |
 | `include/key_calibration.h`, `src/key_calibration.cpp` | Calibration state, EEPROM blob, mapping |
 | `src/main.cpp` | Application entry, owns `Mux`, key loop, Serial / MIDI output |
-| `include/midi_config.h` | **`MIDIOUT_ENABLED`** and transport macros vs PlatformIO envs |
+| `include/midi.h` | MIDI outbound API + `midiKeyboardPhysicalNote()` (transport flags + tunables in **`config.h`**) |
 | `test/` | Unity tests |
 | `.cursor/rules/project-conventions.mdc` | Cursor agent notes (style, build, architecture) |
 
