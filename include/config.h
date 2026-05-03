@@ -72,3 +72,54 @@
 #ifndef KEY_CALIB_SESSION_SEED_ADC
 #define KEY_CALIB_SESSION_SEED_ADC 700
 #endif
+
+// ── Hall strength TX (binary; host maps depth → MIDI / note logic / etc.) ───────
+//
+// Fixed frame (**24 bytes**, XOR checksum). Sent on USB CDC `Serial`
+// **and** `SoftwareSerial` (`HALL_UART_*`), rate **`HALL_TX_INTERVAL_MS`**.
+//
+//   [0..1]   magic `HALL_TX_MAGIC0`, `HALL_TX_MAGIC1`
+//   [2]      frame version **`HALL_TX_FRAME_VER_DEPTH_ONLY`** (calibrated depth only)
+//   [3..22]  strength_q[0..9] uint16 LE each in **0 … `HALL_TX_STRENGTH_SCALE`**
+//            → float depth = strength_q / **`HALL_TX_STRENGTH_SCALE`** (≈ 0.0 .. 1.0).
+//            Scale defaults to **1023** on AVR (10-bit ADC class) and **4095** on RP2040 (12-bit).
+//   [23]     XOR of bytes [2..22] inclusive
+//
+// Legacy ver **2** frames were **28 B** (included `millis()` before the same 10×uint16 payload).
+//
+// ASCII poll table (optional) may appear on USB only; parsers should scan for the magic pair.
+
+#ifndef HALL_TX_MAGIC0
+#define HALL_TX_MAGIC0 0xA5
+#endif
+#ifndef HALL_TX_MAGIC1
+#define HALL_TX_MAGIC1 0x5A
+#endif
+#ifndef HALL_TX_FRAME_VER_STRENGTH_Q
+#define HALL_TX_FRAME_VER_STRENGTH_Q 2 /* legacy: 28-byte frame with millis */
+#endif
+#ifndef HALL_TX_FRAME_VER_DEPTH_ONLY
+#define HALL_TX_FRAME_VER_DEPTH_ONLY 3 /* current: 24-byte depth-only frame */
+#endif
+
+#if defined(ARDUINO_ARCH_RP2040)
+#ifndef HALL_TX_STRENGTH_SCALE
+#define HALL_TX_STRENGTH_SCALE 4095u
+#endif
+#else
+#ifndef HALL_TX_STRENGTH_SCALE
+#define HALL_TX_STRENGTH_SCALE 1023u
+#endif
+#endif
+
+#ifndef HALL_TX_INTERVAL_MS
+#define HALL_TX_INTERVAL_MS 10
+#endif
+
+#ifndef HALL_UART_RX_PIN
+#define HALL_UART_RX_PIN 0
+#endif
+
+#ifndef HALL_UART_TX_PIN
+#define HALL_UART_TX_PIN 1
+#endif

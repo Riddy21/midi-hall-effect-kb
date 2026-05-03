@@ -23,12 +23,16 @@ void keyCalibrationSetupPins();
 // Debounced cal switch, begin/end session, EEPROM commit, LED. Call each loop before keyCalibrationFeed().
 void keyCalibrationPoll();
 
+// Clears persisted calibration to defaults (0..1023), resets RAM snapshot; begins capture session (seed see KEY_CALIB_SESSION_SEED_ADC).
 void keyCalibrationBegin();
 // Copies session min/max into runtime storage and persists to EEPROM.
 void keyCalibrationEndCommit();
 
 bool keyCalibrationIsActive();
 void keyCalibrationFeed(size_t keyIndex, uint16_t raw);
+
+// Normalized strength [0.0, 1.0] after deadzone; uses session range while calibrating, else EEPROM range.
+float keyCalibrationStrength(size_t keyIndex, uint16_t raw);
 
 uint8_t keyCalibrationMap(size_t keyIndex, uint16_t raw);
 // During active calibration, maps using the running session min/max (for display).

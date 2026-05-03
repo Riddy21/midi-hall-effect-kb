@@ -67,9 +67,10 @@ static bool s_calibrating;
 static uint16_t s_sessMin[EEPROM_CAL_KEY_COUNT];
 static uint16_t s_sessMax[EEPROM_CAL_KEY_COUNT];
 
-static uint8_t mapRange(uint16_t raw, uint16_t lo, uint16_t hi) {
+// Calibrated strength [0.0, 1.0]; deadzone math stays integer (ADC-count exact).
+static float mapRange(uint16_t raw, uint16_t lo, uint16_t hi) {
   if (hi <= lo) {
-    return 50;
+    return 0.5f;
   }
   const int32_t lo32 = static_cast<int32_t>(lo);
   const int32_t hi32 = static_cast<int32_t>(hi);
@@ -89,13 +90,23 @@ static uint8_t mapRange(uint16_t raw, uint16_t lo, uint16_t hi) {
     effLo = lo32;
     effHi = hi32;
     if (effHi <= effLo) {
-      return 50;
+      return 0.5f;
     }
   }
 
-  int32_t x = static_cast<int32_t>(raw) - effLo;
+  const int32_t x = static_cast<int32_t>(raw) - effLo;
+  if (x <= 0) {
+    return 0.0f;
+  }
   const int32_t effSpan = effHi - effLo;
-  int32_t v = (x * 100 + effSpan / 2) / effSpan;
+  if (x >= effSpan) {
+    return 1.0f;
+  }
+  return static_cast<float>(x) / static_cast<float>(effSpan);
+}
+
+static uint8_t strengthToPercent(float s) {
+  int v = static_cast<int>(s * 100.0f + 0.5f);
   if (v < 0) {
     return 0;
   }
@@ -120,6 +131,11 @@ bool keyCalibrationHadStoredCalibration() { return s_hadStored; }
 
 void keyCalibrationBegin() {
   s_calibrating = true;
+  // Drop prior EEPROM calibration immediately so this session does not build on old values.
+  eepromCalibrationDefaults(s_calMin, s_calMax);
+  eepromCalibrationSave(s_calMin, s_calMax);
+  s_hadStored = true;
+
   const uint16_t seed = static_cast<uint16_t>(KEY_CALIB_SESSION_SEED_ADC);
   for (size_t i = 0; i < EEPROM_CAL_KEY_COUNT; i++) {
     s_sessMin[i] = seed;
@@ -165,9 +181,7 @@ void keyCalibrationPoll() {
     s_calModeButton.bootAlign();
     const bool wantCal = s_calModeButton.isPressed();
     s_prevCalPin = wantCal;
-    if (wantCal) {
-      keyCalibrationBegin();
-    }
+    // Do not enter calibration from boot pin state alone (floating HIGH would trap run mode).
     syncCalHwLed();
     return;
   }
@@ -196,21 +210,28 @@ void keyCalibrationFeed(size_t keyIndex, uint16_t raw) {
   }
 }
 
+float keyCalibrationStrength(size_t keyIndex, uint16_t raw) {
+  if (keyIndex >= EEPROM_CAL_KEY_COUNT) {
+    return 0.0f;
+  }
+  if (s_calibrating) {
+    return mapRange(raw, s_sessMin[keyIndex], s_sessMax[keyIndex]);
+  }
+  return mapRange(raw, s_calMin[keyIndex], s_calMax[keyIndex]);
+}
+
 uint8_t keyCalibrationMap(size_t keyIndex, uint16_t raw) {
   if (keyIndex >= EEPROM_CAL_KEY_COUNT) {
     return 0;
   }
-  return mapRange(raw, s_calMin[keyIndex], s_calMax[keyIndex]);
+  return strengthToPercent(mapRange(raw, s_calMin[keyIndex], s_calMax[keyIndex]));
 }
 
 uint8_t keyCalibrationDisplayPercent(size_t keyIndex, uint16_t raw) {
   if (keyIndex >= EEPROM_CAL_KEY_COUNT) {
     return 0;
   }
-  if (s_calibrating) {
-    return mapRange(raw, s_sessMin[keyIndex], s_sessMax[keyIndex]);
-  }
-  return keyCalibrationMap(keyIndex, raw);
+  return strengthToPercent(keyCalibrationStrength(keyIndex, raw));
 }
 
 static bool sessionKeyHasSamples(size_t i) {

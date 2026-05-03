@@ -7,11 +7,11 @@ alwaysApply: true
 
 ## What this project is
 
-Arduino Uno firmware: **hall-effect keys** read through an **analog multiplexer**, per-key ADC calibration **stored in EEPROM**, optional **calibration mode** on a GPIO with LED feedback. **Serial** prints tabular key / percent / ADC at a fixed interval (building block toward MIDI or host tools).
+Arduino Uno firmware: **hall-effect keys** via **analog multiplexer**, per-key calibration in **EEPROM**, optional **calibration mode** on GPIO + LED. **USB Serial** carries **24-byte binary depth frames** by default (poll table disabled unless you undef **`HALL_SILENCE_POLL_TABLE`**). Frames mirror on **`SoftwareSerial`** (`usb.cpp` / `uart.cpp`) for host tools (e.g. **`tools/demo_midi_bridge.py`** — GUI MPE bridge + monitor modes).
 
 ## Build, flash, monitor, test
 
-- **Compile:** `pio run -e uno`
+- **Compile:** `pio run -e uno` (USB serial is **binary depth frames only** by default; remove `-DHALL_SILENCE_POLL_TABLE` from `platformio.ini` if you want the ASCII poll table on USB too)
 - **Upload:** `pio run -e uno -t upload` (set port in env or CLI if needed)
 - **Serial monitor:** 115200 8N1 — `pio device monitor -b 115200` (or VS Code PlatformIO)
 - **All tests:** `pio test -e uno`
@@ -29,8 +29,10 @@ Env name is **`uno`** (`platformio.ini`). Application sources are **allow-listed
 | `include/mux.h`, `src/mux.cpp` | `Mux` + `MuxConfig`; **no** global mux — owning TU constructs `Mux g_mux(config)` (see `main.cpp`) |
 | `include/button.h`, `src/button.cpp` | Debounced `Button` (cal mode switch uses it inside `key_calibration.cpp`) |
 | `include/eeprom_store.h`, `src/eeprom.cpp` | `EepromStore::instance()`, typed **`EepromSlot<T>`** for EEPROM regions |
-| `include/key_calibration.h`, `src/key_calibration.cpp` | EEPROM cal blob, runtime min/max, cal switch polling, mapping 0–100 |
-| `src/main.cpp` | App `setup`/`loop`, owns **`Mux g_mux(muxDefaultConfig())`**, key scan, Serial table (`PIO_UNIT_TESTING` omits app; tests supply their own `setup`/`loop`) |
+| `include/key_calibration.h`, `src/key_calibration.cpp` | EEPROM cal blob, runtime min/max, cal switch polling, mapping to normalized strength [0,1] + percent display |
+| `include/usb.h`, `src/usb.cpp` | USB CDC `UsbHall`, **`HallBytePort`**, **24-byte binary** depth frames (uint16 ×10 normalized 0..1 / scale, XOR); host: **`tools/demo_midi_bridge.py`** |
+| `include/uart.h`, `src/uart.cpp` | `SoftwareSerial` **`UartHall`** on **`HALL_UART_*`** pins |
+| `src/main.cpp` | App `setup`/`loop`, owns **`Mux g_mux(muxDefaultConfig())`**, key scan, optional Serial table (`PIO_UNIT_TESTING` omits app; tests supply their own `setup`/`loop`) |
 
 Tests live under `test/`; see `test/README` for suite list.
 
