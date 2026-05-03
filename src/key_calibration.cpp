@@ -25,9 +25,14 @@ const EepromSlot<CalBlob> kCalibrationSlot(EEPROM_CAL_BASE_ADDR);
 
 void eepromCalibrationDefaults(uint16_t minOut[EEPROM_CAL_KEY_COUNT],
                               uint16_t maxOut[EEPROM_CAL_KEY_COUNT]) {
+#if defined(ARDUINO_ARCH_RP2040)
+  constexpr uint16_t kAdcCeiling = 4095;
+#else
+  constexpr uint16_t kAdcCeiling = 1023;
+#endif
   for (size_t i = 0; i < EEPROM_CAL_KEY_COUNT; i++) {
     minOut[i] = 0;
-    maxOut[i] = 1023;
+    maxOut[i] = kAdcCeiling;
   }
 }
 
@@ -135,7 +140,11 @@ void keyCalibrationEndCommit() {
   for (size_t i = 0; i < EEPROM_CAL_KEY_COUNT; i++) {
     if (s_sessMin[i] == seed && s_sessMax[i] == seed) {
       s_calMin[i] = 0;
+#if defined(ARDUINO_ARCH_RP2040)
+      s_calMax[i] = 4095;
+#else
       s_calMax[i] = 1023;
+#endif
     } else {
       s_calMin[i] = s_sessMin[i];
       s_calMax[i] = s_sessMax[i];

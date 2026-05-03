@@ -11,7 +11,7 @@ Arduino Uno firmware: **hall-effect keys** read through an **analog multiplexer*
 
 ## Build, flash, monitor, test
 
-- **Compile:** `pio run -e uno`
+- **Compile:** `pio run -e uno` — Uno CDC serial MIDI (**`midi_serial`**) + host **`tools/serial_midi_bridge.py`** — Pico serial MIDI **`pico_midi_serial`** — native USB MIDI Leonardo (**`midi_usb`**) / Micro — RP2040 app **`pico`**
 - **Upload:** `pio run -e uno -t upload` (set port in env or CLI if needed)
 - **Serial monitor:** 115200 8N1 — `pio device monitor -b 115200` (or VS Code PlatformIO)
 - **All tests:** `pio test -e uno`
@@ -19,7 +19,7 @@ Arduino Uno firmware: **hall-effect keys** read through an **analog multiplexer*
 
 Hardware tests upload firmware to the board; EEPROM tests back up and restore the calibration slot.
 
-Env name is **`uno`** (`platformio.ini`). Application sources are **allow-listed** via `build_src_filter` (not every `src/*.cpp` is in the firmware image by default).
+Env MIDI / board: **`midi_serial`**, **`midi_usb`**, **`pico`**, **`pico_midi_serial`**, plus legacy **`uno_midi_serial`**, **`leonardo`**, **`micro`**. **`pico`** uses `maxgerhardt/platform-raspberrypi` + **earlephilhower** core (see `platformio.ini`). **`include/midi_config.h`** table lists transports.
 
 ## Layout and responsibilities
 
@@ -31,6 +31,7 @@ Env name is **`uno`** (`platformio.ini`). Application sources are **allow-listed
 | `include/eeprom_store.h`, `src/eeprom.cpp` | `EepromStore::instance()`, typed **`EepromSlot<T>`** for EEPROM regions |
 | `include/key_calibration.h`, `src/key_calibration.cpp` | EEPROM cal blob, runtime min/max, cal switch polling, mapping 0–100 |
 | `src/main.cpp` | App `setup`/`loop`, owns **`Mux g_mux(muxDefaultConfig())`**, key scan, Serial table (`PIO_UNIT_TESTING` omits app; tests supply their own `setup`/`loop`) |
+| `include/midi_config.h`, `include/midi_api.h`, `include/usb_midi.h`, `include/midi_key_scan.h` + `.cpp` | Compile‑time transports: USB MIDI (**32U4**), optional serial MIDI fallback; **`midi_key_scan`** maps hall strength → note on/off |
 
 Tests live under `test/`; see `test/README` for suite list.
 

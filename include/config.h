@@ -72,3 +72,24 @@
 #ifndef KEY_CALIB_SESSION_SEED_ADC
 #define KEY_CALIB_SESSION_SEED_ADC 700
 #endif
+
+// ── MIDI key scan (midi_key_scan) — MIDI note mapped from key index ──────────
+#ifndef MIDI_VOICE_CHANNEL
+// Host-visible channel number 1..16.
+#define MIDI_VOICE_CHANNEL 1
+#endif
+#ifndef MIDI_KEY_NOTE_BASE
+// Key 0 → this MIDI note number; successive keys increment (clamped 0..127).
+#define MIDI_KEY_NOTE_BASE 60
+#endif
+// Hysteresis on calibrated 0..100 strength: press fires at/above ON, release at/below OFF.
+#ifndef MIDI_NOTE_ON_PERCENT
+#define MIDI_NOTE_ON_PERCENT 12
+#endif
+#ifndef MIDI_NOTE_OFF_PERCENT
+#define MIDI_NOTE_OFF_PERCENT 6
+#endif
+
+#if defined(ARDUINO_ARCH_RP2040)
+#include "config_rp2040.h"
+#endif

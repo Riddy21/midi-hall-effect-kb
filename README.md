@@ -1,6 +1,6 @@
 # midi-hall-effect-kb
 
-Firmware for an **Arduino Uno** that reads **hall-effect keyboard** columns through a **single analog multiplexer**, calibrates each key’s ADC range, stores calibration in **EEPROM**, and streams key state over **Serial** as a tab-separated table (percent and raw ADC). Calibration mode uses a **digital input** and **LED**; no calibration UI on Serial.
+Firmware for an **Arduino Uno** that reads **hall-effect keyboard** columns through a **single analog multiplexer**, calibrates each key’s ADC range, stores calibration in **EEPROM**, and streams key state over **Serial** as a tab-separated table (percent and raw ADC). Calibration mode uses a **digital input** and **LED**; no calibration UI on Serial. **MIDI** is optional and selected with a **PlatformIO environment** (`uno` stays table/calibration only — see **[MIDI (PlatformIO environments)](#midi-platformio-environments)**).
 
 ## Features
 
@@ -24,6 +24,63 @@ pio run -e uno              # build firmware
 pio run -e uno -t upload    # flash connected Uno
 pio device monitor -b 115200
 ```
+
+That matches **`default_envs = uno`** in `platformio.ini`: everyday builds and **`pio test -e uno`** use this image. **`uno`** does **not** emit MIDI bytes on `Serial`; use **`midi_serial`** when you need the host bridge workflow (next section).
+
+### Upload fails: `stk500_recv(): programmer is not responding`
+
+The Uno bootloader talks over **the same USB‑serial CDC device** your monitor and scripts use. If anything else holds the port, **`pio run … -t upload`** will fail — often with **“programmer is not responding.”**
+
+**Quit** PlatformIO Serial Monitor, **`pio device monitor`**, the Arduino IDE monitor, **`screen`/`minicom`**, and **`tools/serial_midi_bridge.py`**, then upload again.
+
+On macOS you can confirm who has the device:
+
+```bash
+lsof /dev/cu.usbmodem*
+```
+
+Stop that process or close its terminal (**Ctrl+C** on the bridge), then retry **`pio run -e uno -t upload`**.
+
+## MIDI (PlatformIO environments)
+
+Same **Uno** hardware, different firmware image — pick the environment for what should appear on the USB‑serial CDC port:
+
+| Environment | MCU / cable | Serial output |
+|-------------|-------------|---------------|
+| **`uno`** *(default)* | ATmega328P Uno | Tabular **ASCII** poll table (`Serial.print` debugging). **`MIDIOUT_ENABLED`** off. |
+| **`midi_serial`** | Same board | **`uno_midi_serial`** alias. **Raw MIDI** bytes on `Serial`; poll table **suppressed** so the stream is usable by a bridge. |
+| **`uno_midi_serial`** | Same | Same flags as **`midi_serial`**. |
+
+Build and flash serial‑MIDI firmware:
+
+```bash
+pio run -e midi_serial -t upload
+```
+
+### Host bridge (macOS): Serial → virtual CoreMIDI
+
+Uno exposes a **CDC serial** device (`/dev/cu.usbmodem…`), not class‑compliant USB‑MIDI in hardware. Forward bytes to CoreMIDI with **`tools/serial_midi_bridge.py`**.
+
+Only **one program** may open the CDC port at a time. **`serial_midi_bridge.py` and `pio … -t upload` cannot run together** — stop the bridge (Ctrl+C), upload firmware, then start the bridge again.
+
+Before running the bridge, **quit PlatformIO Serial Monitor** (and anything else holding the port).
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r tools/requirements-serial-midi.txt
+python tools/serial_midi_bridge.py --list                    # enumerate ports
+python tools/serial_midi_bridge.py -p /dev/cu.usbmodemXXXX   # explicit device
+python tools/serial_midi_bridge.py                           # omit -p to auto-pick cu.usbmodem*
+```
+
+Keep **baud `115200`** on both ends (`platformio.ini` **`monitor_speed`**, **`include/serial_baud.h`** / **`MIDI_SERIAL_BAUD`** in **`include/midi_config.h`**).
+
+The bridge opens serial with **DTR/RTS de‑asserted** so macOS is less likely to **reset** the board and churn “serial disconnected” reconnect loops (details in **`tools/serial_midi_bridge.py`**).
+
+### Other boards (quick reference)
+
+`platformio.ini` also defines Leonardo/Micro **native USB MIDI** (`midi_usb`, `midi_usb_micro`, **`MIDIUSB`**) and **Raspberry Pi Pico** (`pico`, `pico_midi_serial`). **`include/midi_config.h`** has an environment ↔ transport table.
 
 ## Configuration
 
@@ -56,7 +113,8 @@ Some suites need the board connected (upload + serial). EEPROM tests temporarily
 | `include/button.h`, `src/button.cpp` | Debounced digital input |
 | `include/eeprom_store.h`, `src/eeprom.cpp` | EEPROM access |
 | `include/key_calibration.h`, `src/key_calibration.cpp` | Calibration state, EEPROM blob, mapping |
-| `src/main.cpp` | Application entry, owns `Mux`, key loop, Serial output |
+| `src/main.cpp` | Application entry, owns `Mux`, key loop, Serial / MIDI output |
+| `include/midi_config.h` | **`MIDIOUT_ENABLED`** and transport macros vs PlatformIO envs |
 | `test/` | Unity tests |
 | `.cursor/rules/project-conventions.mdc` | Cursor agent notes (style, build, architecture) |
 

@@ -2,8 +2,14 @@
 
 #include "config.h"
 #include "key_calibration.h"
+#include "midi_config.h"
 #include "mux.h"
 #include "serial_baud.h"
+
+#if MIDIOUT_ENABLED
+#include "midi_api.h"
+#include "midi_key_scan.h"
+#endif
 
 // Omitted in unit-test builds (PIO defines PIO_UNIT_TESTING); test/*/tests.cpp
 // supplies setup() / loop().
@@ -28,6 +34,7 @@ static void pollAllKeys() {
   }
 }
 
+#if !MIDIOUT_ENABLED || !defined(MIDI_SILENCE_POLL_TABLE)
 // One row of column headers (k0..k9), then pct row, then adc row (tab-separated).
 static void printKeyTableColumns(uint32_t nowMs) {
   Serial.print(nowMs);
@@ -58,6 +65,11 @@ static void printKeyTableColumns(uint32_t nowMs) {
   for (size_t i = 0; i < KEY_COUNT; i++) {
     Serial.print('\t');
     const uint16_t a = keyValues[i];
+#if defined(ARDUINO_ARCH_RP2040)
+    if (a < 10000) {
+      Serial.print(' ');
+    }
+#endif
     if (a < 1000) {
       Serial.print(' ');
     }
@@ -71,30 +83,49 @@ static void printKeyTableColumns(uint32_t nowMs) {
   }
   Serial.println();
 }
+#endif
 
 void setup() {
   keyCalibrationSetupPins();
+#if defined(ARDUINO_ARCH_RP2040)
+  analogReadResolution(12);
+#endif
   Serial.begin(SERIAL_MONITOR_BAUD);
+#if MIDIOUT_ENABLED
+  midiApiBegin();
+  midiKeyScanInit();
+#endif
   g_mux.init();
   keyCalibrationInit();
+#if !MIDIOUT_ENABLED || !defined(MIDI_SILENCE_POLL_TABLE)
   Serial.print(F("hall_kb_poll "));
   Serial.print(SERIAL_REPORT_INTERVAL_MS);
   Serial.println(F(" ms row | columns: key / pct / adc"));
+#endif
 }
 
 void loop() {
-  static uint32_t lastReportMs = 0;
-
   keyCalibrationPoll();
 
   pollAllKeys();
 
+#if MIDIOUT_ENABLED
+  midiKeyScanPoll(keyValues, KEY_COUNT);
+#endif
+
+#if !MIDIOUT_ENABLED || !defined(MIDI_SILENCE_POLL_TABLE)
+  static uint32_t lastReportMs = 0;
   const uint32_t now = millis();
   if (now - lastReportMs >= SERIAL_REPORT_INTERVAL_MS) {
     lastReportMs = now;
     printKeyTableColumns(now);
     Serial.flush();
   }
+#endif
+
+#if MIDIOUT_ENABLED
+  midiApiPoll();
+#endif
 }
 
 #endif  // !PIO_UNIT_TESTING
